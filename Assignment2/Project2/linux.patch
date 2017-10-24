@@ -1,0 +1,271 @@
+diff --git a/Assignment2/Project2/scheduler_changed/Kconfig.iosched b/Assignment2/Project2/scheduler_changed/Kconfig.iosched
+new file mode 100644
+index 0000000..1cda7fa
+--- /dev/null
++++ b/Assignment2/Project2/scheduler_changed/Kconfig.iosched
+@@ -0,0 +1,78 @@
++if BLOCK
++
++menu "IO Schedulers"
++
++config IOSCHED_NOOP
++	bool
++	default y
++	---help---
++	  The no-op I/O scheduler is a minimal scheduler that does basic merging
++	  and sorting. Its main uses include non-disk based block devices like
++	  memory devices, and specialised software or hardware environments
++	  that do their own scheduling and require only minimal assistance from
++	  the kernel.
++
++config IOSCHED_CLOOK
++        tristate "C-look I/O scheduler"
++        default y
++        ---help---
++          The C-Look I/O scheduler is a minimal scheduler that does basic mergin          g and sorting. The scheduler mainly uses an elevator algorithm.
++ 
++config IOSCHED_DEADLINE
++	tristate "Deadline I/O scheduler"
++	default y
++	---help---
++	  The deadline I/O scheduler is simple and compact. It will provide
++	  CSCAN service with FIFO expiration of requests, switching to
++	  a new point in the service tree and doing a batch of IO from there
++	  in case of expiry.
++
++config IOSCHED_CFQ
++	tristate "CFQ I/O scheduler"
++	default y
++	---help---
++	  The CFQ I/O scheduler tries to distribute bandwidth equally
++	  among all processes in the system. It should provide a fair
++	  and low latency working environment, suitable for both desktop
++	  and server systems.
++
++	  This is the default I/O scheduler.
++
++config CFQ_GROUP_IOSCHED
++	bool "CFQ Group Scheduling support"
++	depends on IOSCHED_CFQ && BLK_CGROUP
++	default n
++	---help---
++	  Enable group IO scheduling in CFQ.
++
++choice
++	prompt "Default I/O scheduler"
++	default DEFAULT_CFQ
++	help
++	  Select the I/O scheduler which will be used by default for all
++	  block devices.
++
++	config DEFAULT_DEADLINE
++		bool "Deadline" if IOSCHED_DEADLINE=y
++
++	config DEFAULT_CFQ
++		bool "CFQ" if IOSCHED_CFQ=y
++
++	config DEFAULT_NOOP
++		bool "No-op"
++       
++        config DEFAULT_CLOOK
++                bool "C-LOOK" if IOSCHED_CLOOK=y
++
++endchoice
++
++config DEFAULT_IOSCHED
++	string
++	default "deadline" if DEFAULT_DEADLINE
++	default "cfq" if DEFAULT_CFQ
++	default "noop" if DEFAULT_NOOP
++        default "clook" if DEFAULT_CLOOK
++
++endmenu
++
++endif
+diff --git a/Assignment2/Project2/scheduler_changed/Makefile b/Assignment2/Project2/scheduler_changed/Makefile
+new file mode 100644
+index 0000000..663368f
+--- /dev/null
++++ b/Assignment2/Project2/scheduler_changed/Makefile
+@@ -0,0 +1,26 @@
++#
++# Makefile for the kernel block layer
++#
++
++obj-$(CONFIG_BLOCK) := bio.o elevator.o blk-core.o blk-tag.o blk-sysfs.o \
++			blk-flush.o blk-settings.o blk-ioc.o blk-map.o \
++			blk-exec.o blk-merge.o blk-softirq.o blk-timeout.o \
++			blk-iopoll.o blk-lib.o blk-mq.o blk-mq-tag.o \
++			blk-mq-sysfs.o blk-mq-cpu.o blk-mq-cpumap.o ioctl.o \
++			genhd.o scsi_ioctl.o partition-generic.o ioprio.o \
++			partitions/
++
++obj-$(CONFIG_BOUNCE)	+= bounce.o
++obj-$(CONFIG_BLK_DEV_BSG)	+= bsg.o
++obj-$(CONFIG_BLK_DEV_BSGLIB)	+= bsg-lib.o
++obj-$(CONFIG_BLK_CGROUP)	+= blk-cgroup.o
++obj-$(CONFIG_BLK_DEV_THROTTLING)	+= blk-throttle.o
++obj-$(CONFIG_IOSCHED_NOOP)	+= noop-iosched.o
++obj-$(CONFIG_IOSCHED_CLOOK)     += sstf-iosched.o
++obj-$(CONFIG_IOSCHED_DEADLINE)	+= deadline-iosched.o
++obj-$(CONFIG_IOSCHED_CFQ)	+= cfq-iosched.o
++
++obj-$(CONFIG_BLOCK_COMPAT)	+= compat_ioctl.o
++obj-$(CONFIG_BLK_CMDLINE_PARSER)	+= cmdline-parser.o
++obj-$(CONFIG_BLK_DEV_INTEGRITY) += bio-integrity.o blk-integrity.o t10-pi.o
++
+diff --git a/Assignment2/Project2/scheduler_changed/sstf-iosched.c b/Assignment2/Project2/scheduler_changed/sstf-iosched.c
+new file mode 100644
+index 0000000..51403fc
+--- /dev/null
++++ b/Assignment2/Project2/scheduler_changed/sstf-iosched.c
+@@ -0,0 +1,148 @@
++#include <linux/blkdev.h>
++#include <linux/bio.h>
++#include <linux/elevator.h>
++#include <linux/init.h>
++#include <linux/module.h>
++#include <linux/slab.h>
++
++struct clook_data{
++	struct list_head queue;
++};
++
++static void clook_merged_requests(struct request_queue *q, struct request *rq, struct request *next){
++	list_del_init(&next->queuelist);
++}
++
++static int clook_dispatch(struct request_queue *q, int force){
++
++	struct clook_data *cd = q->elevator->elevator_data;
++	char operation;
++
++	if(!list_empty(&cd->queue)){
++		struct request *rq;
++		rq = list_entry(cd->queue.next, struct request, queuelist);
++		list_del_init(&rq->queuelist);
++		elv_dispatch_sort(q,rq);
++
++		if(rq_data_dir(rq) == REQ_WRITE)
++			operation = 'W';
++		else
++			operation = 'R';
++
++		printk(KERN_INFO "C-Look Dispatch %c %lu\n", operation, blk_rq_pos(rq));
++
++		return 1;
++	}
++	return 0;
++}
++
++static void clook_add_request(struct request_queue *q, struct request *rq)
++{
++        struct clook_data *cd = q->elevator->elevator_data;
++        struct list_head *cur;
++        struct request *a;
++        char operation;
++
++        if(!list_empty(&cd->queue)){
++        	list_for_each(cur, &cd->queue){
++        		a = list_entry(cur, struct request, queuelist);
++        		if(blk_rq_pos(a) < blk_rq_pos(rq)){
++        			list_add(&rq->queuelist, &a->queuelist);
++        			break;
++        		}
++        	}
++    	}else{
++    		list_add(&rq->queuelist, &cd->queue);
++    	}
++
++        if(rq_data_dir(rq) == REQ_WRITE)
++                operation = 'W';
++        else
++                operation = 'R';
++
++        printk(KERN_INFO "C-Look add %c %lu\n", operation, blk_rq_pos(current));
++}
++
++static struct request *
++clook_former_request(struct request_queue *q, struct request *rq)
++{
++        struct clook_data *cd = q->elevator->elevator_data;
++
++        if (rq->queuelist.prev == &cd->queue)
++                return NULL;
++        return list_entry(rq->queuelist.prev, struct request, queuelist);
++}
++
++static struct request *
++clook_latter_request(struct request_queue *q, struct request *rq)
++{
++        struct clook_data *cd = q->elevator->elevator_data;
++
++        if (rq->queuelist.next == &cd->queue)
++                return NULL;
++        return list_entry(rq->queuelist.next, struct request, queuelist);
++}
++
++static int clook_init_queue(struct request_queue *q, struct elevator_type *e)
++{
++        struct clook_data *cd;
++        struct elevator_queue *eq;
++
++        eq = elevator_alloc(q, e);
++        if (!eq)
++                return -ENOMEM;
++
++        cd = kmalloc_node(sizeof(*cd), GFP_KERNEL, q->node);
++        if (!cd) {
++                kobject_put(&eq->kobj);
++                return -ENOMEM;
++        }
++        eq->elevator_data = cd;
++
++        INIT_LIST_HEAD(&cd->queue);
++
++        spin_lock_irq(q->queue_lock);
++        q->elevator = eq;
++        spin_unlock_irq(q->queue_lock);
++        return 0;
++}
++
++static void clook_exit_queue(struct elevator_queue *e)
++{
++        struct clook_data *cd = e->elevator_data;
++
++        BUG_ON(!list_empty(&cd->queue));
++        kfree(cd);
++}
++
++static struct elevator_type elevator_clook = {
++        .ops = {
++                .elevator_merge_req_fn          = clook_merged_requests,
++                .elevator_dispatch_fn           = clook_dispatch,
++                .elevator_add_req_fn            = clook_add_request,
++                .elevator_former_req_fn         = clook_former_request,
++                .elevator_latter_req_fn         = clook_latter_request,
++                .elevator_init_fn               = clook_init_queue,
++                .elevator_exit_fn               = clook_exit_queue,
++        },
++        .elevator_name = "clook",
++        .elevator_owner = THIS_MODULE,
++};
++
++static int __init clook_init(void)
++{
++        return elv_register(&elevator_clook);
++}
++
++static void __exit clook_exit(void)
++{
++        elv_unregister(&elevator_clook);
++}
++
++module_init(clook_init);
++module_exit(clook_exit);
++
++
++MODULE_AUTHOR("Group 35");
++MODULE_LICENSE("GPL");
++MODULE_DESCRIPTION("CLOOK IO scheduler");
+\ No newline at end of file
