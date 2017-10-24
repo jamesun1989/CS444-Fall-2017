@@ -1,3 +1,9 @@
+/*
+*CS444 OS II
+*Project 2: I/O Elevators
+*Xiaoli Sun, ID: 932051695
+*Jaydeep Hemant Rotithor
+*/
 #include <linux/blkdev.h>
 #include <linux/bio.h>
 #include <linux/elevator.h>
@@ -43,11 +49,11 @@ static void clook_add_request(struct request_queue *q, struct request *rq)
         struct request *a;
         char operation;
 
-        if(!list_empty(&cd->queue)){
+        if(!list_empty(&cd->queue)){//if the queue isn't empty, do insertion sort
         	list_for_each(cur, &cd->queue){
         		a = list_entry(cur, struct request, queuelist);
-        		if(blk_rq_pos(a) < blk_rq_pos(rq)){
-        			list_add(&rq->queuelist, &a->queuelist);
+        		if(blk_rq_pos(a) < blk_rq_pos(rq)){//if current sector position is above than request sector position,
+        			list_add(&rq->queuelist, &a->queuelist);//add an item above current request
         			break;
         		}
         	}
