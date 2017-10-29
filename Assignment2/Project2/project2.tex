@@ -1,0 +1,162 @@
+\documentclass[10pt,letterpaper]{article}
+
+\usepackage{color}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{geometry}
+\geometry{left=0.75in, right=0.75in, top=0.75in, bottom=0.75in}
+
+\def\name{Xiaoli Sun, Jaydeep Hemant Rotithor}
+
+
+\begin{document}
+\begin{titlepage}
+\begin{center}
+    \Huge
+    \textbf{Project 2}
+    
+    \vspace{0.5in}
+    \large
+    CS444 - Operating Systems II\\
+    
+    \vspace{0.2in}
+    \large
+    Fall 2017\\
+    
+    \vspace{0.2in}
+    \large
+    Instructor: D. Kevin McGrath\\
+    
+    \vspace{0.2in}
+    \textbf{Xiaoli Sun, Jaydeep Hemant Rotithor}
+    
+    \vspace{0.5in}
+    \textbf{Abstract}\\
+    \vspace{0.2in}
+    This is the second CS444 assignment. There's one part in this assignment. In this assignemnt, we will need to use the C-LOOK algorithm to implement a new I/O scheduler in Linux kernel. After that, we need to find a way to test if the new scheduler works good or not. Furthermore, we will also learn how to generate a linux patch file.
+    
+    \vspace{0.3in}
+    \vfill
+    %\Large 
+    
+    Oct 28, 2017
+
+\end{center}
+\end{titlepage}
+
+
+
+
+\newpage
+\section{The design of C-LOOK algorithm}
+
+\textbf{}
+
+Before doing this assignment, I first make some research on Internet to find out how C-LOOK algorithm works. During researching, I also find that there are many scheduling algorithm including FCFS(First Come-First Service), SSTF(Shortest Seek Time First), Elevator(SCAN), Circular-Scan(C-SCAN), LOOK and C-LOOK. The implementation of C-LOOK algorithm is not as hard as we expected. The basic design of C-LOOK algorithm is that it will first sort the incoming requests in ascending order. Then the reading/writing header will jump to the beginning position(inner part of disk) of the queue and moving outwards to the disk. After the reading/writing header reaches the last element in the queue, it will jump to the beginning of the queue and do the operation above again. In this project, since requests in the queue are already been sorted in the dispatch function, we add an insertion sort in add\_request() function. It will either add requests to an empty queue or add requests to the queue and sort it. 
+
+\section*{Command List}
+
+\textbf{}
+
+\textbf{1. Make clean}\\
+Clear all previous builds\\
+
+\textbf{2. cp sstf-iosched.c /scratch/fall2017/35/linux-yocto-3.19/block}\\
+Copy C-Look scheduler to block folder\\
+
+\textbf{3. cp {Makefile,Kconfig.iosched} /scratch/fall2017/35/linux-yocto-3.19/block}\\
+Copy new Makefile and Kconfig.iosched to block folder and overwrite original file\\
+
+\textbf{4. make -j4 all}\\
+cd to /linux-yocto-3.19, then use this command to compile kernel\\
+
+\textbf{5. source /scratch/files/environment-setup-i586-poky-linux.csh}\\
+source the environment script for the shell\\
+
+\textbf{6. qemu-system-i386 -gdb tcp::5535 -S -nographic -kernel arch/x86/boot/bzImage -drive file=core-image-lsb-sdk-qemux86.ext4,if=virtio -enable-kvm -net none -usb -localtime --no-reboot --append "root=/dev/vda rw console=ttyS0 debug".}\\
+In this step, we are ready to boot vm and test kernel in qemu\\
+
+\textbf{7. gdb}\\
+Open the second terminal session and type gdb\\
+
+\textbf{8. target remote:5535}\\
+Connect to port 5535\\
+
+\textbf{9. continue}\\
+Type continue\\
+
+\textbf{10. root}\\
+Login in VM as root and no password required\\
+
+\textbf{11. cat /sys/block/hdc/queue/scheduler}\\
+Check which scheduler is being used\\
+
+\textbf{12. echo clook $>$ /sys/block/hdc/queue/scheduler}\\
+Change scheduler to clook scheduler\\
+
+\textbf{13. dd if=/dev/zero of=test bs=32k, count=2k}\\
+Test the write/read speed of both scheduler\\
+
+\textbf{shutdown -h now}\\
+In the twelveth step, we can use the command above to shut down VM\\
+
+\section{Version Control}
+
+\textbf{}
+
+\begin{tabular}{|l|l|l|p{8cm}|} \hline
+Revision & Date & Author(s) & Description\\ \hline
+0d27681 & 10.23.17 & Xiaoli Sun & Finished c-look dispatch function.\\ \hline
+7e541d2 & 10.24.17 & Xiaoli Sun & complete add\_request function for C-LOOK algorithm and fix some small bugs.\\ \hline
+041f318 & 10.24.17 & Xiaoli Sun & Added default I/O Linux scheduler files.\\ \hline
+59e6c88 & 10.24.17 & Xiaoli Sun & Added changed Linux scheduler files\\ \hline
+1592297 & 10.24.17 & Xiaoli Sun & Added some comments in sstf-iosched.c.\\ \hline
+a708d37 & 10.24.17 & Xiaoli Sun & Created Linux Patch file.\\ \hline
+
+\end{tabular}
+
+\section{Work log}
+
+\textbf{}
+
+\begin{tabular}{|l|p{12cm}|} \hline
+Date & Summary\\ \hline
+Friday, 10/20 & Looked over project requirements and began planning.\\ \hline
+Saturday, 10/21 &\\ \hline
+Sunday, 10/22 &\\ \hline
+Monday, 10/23 &  Finished c-look dispatch function.\\\hline
+Tuesday, 10/24 &  complete add\_request function for C-LOOK algorithm and fix some small bugs, Added default I/O Linux scheduler files,  Added changed Linux scheduler files, Added some comments in sstf-iosched.c, Created Linux Patch file. \\ \hline
+Wednesday, 10/25 & Began write-up. \\ \hline
+Thursday, 10/26 & Working on concurrency2. \\ \hline
+Friday, 10/27 & .\\ \hline
+Saturday, 10/28 & Finished write-up and prepare to submit the assignment. \\ \hline
+
+\end{tabular}
+
+\section{Project questions}
+
+\textbf{}
+
+\textbf{1. What do you think the main point of this assignment is?}\\
+
+The main point of this project was to make sure that we understood scheduling algorithms and how to implement them. There are several, two of which are no-op and c-look. The machines that we used were using the no-op scheduler by default, and we would implement and test the c-look scheduler. In doing so, we would learn how the c-look scheduler works and the differences between it and the no-op scheduler.\\
+
+\textbf{2. How did you personally approach the problem? Design decisions, algorithm, etc.}\\
+
+As I mentioned above, before implementing this project, we first made many researches online to understand how C-LOOK algorithm works. Then, we found out where the default scheduler file, Makefile and config file located. Copy all content from noop-iosched to sstf-iosched, look over it and find out where should we change the code. After that, modify Makefile and Kconfig.iosched and copy these two files under block folder. Finally, build the kernel and boot the VM to see if the kernel could be built successfully or to see if the scheduler works good or not. \\
+
+\textbf{3. How did you ensure your solution was correct? Testing details, for instance.}\\
+
+To make sure that we had the correct solution, we tested our program on several machines. We changed the scheduler to c-look on each machine, and made sure that the program had the same, correct behavior each time. Since the program worked properly on each machine, we were able to ensure that our solution was correct. \\
+
+\textbf{4. What did you learn?}\\
+
+We learned a lot about I/O schedulers in this assignment. We learned how the no-op and c-look schedulers worked. We also learned how to modify the code of the current scheduler to create a new scheduler. Finally, we learned how to rebuild the kernel to check that our changes worked correctly. \\
+
+\textbf{5. How should the TA evaluate your work? Provide detailed steps to prove correctness.}\\
+
+During the process of kernel building, the process will ask you to choose scheduler, select clook and continue. The rest command is list at section 1 - Command List. 
+
+
+\end{document}
