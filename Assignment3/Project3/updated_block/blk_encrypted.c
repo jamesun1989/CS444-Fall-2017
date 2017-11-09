@@ -30,6 +30,7 @@ module_param(logical_block_size, int, 0);
 static int nsectors = 1024; /* How big the drive is */
 module_param(nsectors, int, 0);
 
+//Set encrypt key and length, then pass encrypt key to module, then insmod will fill line with any argument from command line.
 static char *encrypt_key = "1234567890";
 module_param(encrypt_key, charp, 0);
 static int encrypt_key_length = 10;
@@ -119,8 +120,7 @@ static void sbd_transfer(struct sbd_device *dev, sector_t sector,
     printk("\n");
 }
 
-static void sbd_request(struct request_queue *q)
-{
+static void sbd_request(struct request_queue *q){
     struct request *req;
 
     req = blk_fetch_request(q);
@@ -134,7 +134,7 @@ static void sbd_request(struct request_queue *q)
             continue;
         }
         sbd_transfer(&Device, blk_rq_pos(req), blk_rq_cur_sectors(req),
-                bio_data(req->bio), rq_data_dir(req));
+                bio_data(req->bio), rq_data_dir(req));//need to change it from req->buffer to bio_data(req->bio)after kernel version 3.15
         if ( ! __blk_end_request_cur(req, 0) ) {
             req = blk_fetch_request(q);
         }
