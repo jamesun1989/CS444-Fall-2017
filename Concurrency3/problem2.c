@@ -1,3 +1,8 @@
+/*
+*	CS444 Concurrency 3 Problem2
+*	Xiaoli Sun 				ID:932051695
+*	Jaydeep Hemant Rotithor ID:931862831
+*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -6,7 +11,7 @@
 
 #define MAX_THREAD_NUM 3
 
-struct Node{
+struct Node{//struct for a linked list node
 	int value;
 	struct Node *next;
 }*head;
@@ -25,11 +30,11 @@ void deleter();
 void searcher(){
 	struct Node *cursor;
 	while(1){
-		sem_wait(&deleter_lock_searcher);
+		sem_wait(&deleter_lock_searcher);//wait until deleter finish
 		cursor = head;
 		if(cursor != NULL){
 			printf("Searching Linked List:\n");
-			while(cursor != NULL){
+			while(cursor != NULL){//print the total value in linked list
 				printf("%d ", cursor->value);
 				cursor = cursor->next;
 			}
@@ -46,17 +51,17 @@ void inserter(){
 	struct Node *cursor, **tail, *temp;
 	int insert_num;
 	while(1){
-		sem_wait(&deleter_lock_inserter);
+		sem_wait(&deleter_lock_inserter);//wait until deleter finish
 		pthread_mutex_lock(&inserter_lock);
 		insert_num = rand()%20;
 		cursor = head;
 		if(cursor == NULL){
-			cursor = (struct Node *)malloc(sizeof(struct Node));
+			cursor = (struct Node *)malloc(sizeof(struct Node));//if no value in linked list, create a node and set it as head
 			cursor->value = insert_num;
 			cursor->next = NULL;
 			head = cursor;
 		}else{
-			printf("Inserting %d to linked list.\n", insert_num);
+			printf("Inserting %d to linked list.\n", insert_num);//if there are values in the list, add the new value to the tail
 			tail = &head;
 			temp = (struct Node *)malloc(sizeof(struct Node));
 			temp->value = insert_num;

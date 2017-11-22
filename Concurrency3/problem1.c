@@ -1,3 +1,8 @@
+/*
+*	CS444 Concurrency 3 Problem1
+*	Xiaoli Sun 				ID:932051695
+*	Jaydeep Hemant Rotithor ID:931862831
+*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
