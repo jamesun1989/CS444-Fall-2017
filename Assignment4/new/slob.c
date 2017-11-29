@@ -223,6 +223,7 @@ static void *slob_page_alloc(struct page *sp, size_t size, int align)
 
 	int delta = 0, units = SLOB_UNITS(size), best_delta = 0;
 
+	//start allocation
 	for (prev = NULL, cur = sp->freelist; ; prev = cur, cur = slob_next(cur)) {
 		slobidx_t avail = slob_units(cur);
 		best_idx = 0;
@@ -233,6 +234,7 @@ static void *slob_page_alloc(struct page *sp, size_t size, int align)
 			delta = aligned - cur;
 		}
 
+		//if space is big enough and the size is best or not
 		if((avail >= (units + delta)) && (best_cur == NULL || (avail - (units + delta) < best_idx))){
 			best_prev = prev;
 			best_cur = cur;
@@ -241,8 +243,9 @@ static void *slob_page_alloc(struct page *sp, size_t size, int align)
 			best_idx = avail - (units + delta);
 		}
 
-		if(slob_last(cur)){
-			if(best_cur != NULL){
+		//allocate best fit
+		if(slob_last(cur)){//check end of list
+			if(best_cur != NULL){//if best_cur exists, continue
 				slobidx_t best_avail = slob_units(best_cur);
 
 				if(best_delta){
@@ -255,13 +258,13 @@ static void *slob_page_alloc(struct page *sp, size_t size, int align)
 				}
 
 				best_next = slob_next(best_cur);
-				if(best_avail == units){
+				if(best_avail == units){//best fit 
 					if(best_prev){
 						set_slob(best_prev, slob_units(best_prev), best_next);
 					}else{
 						sp->freelist = best_next;
 					}
-				}else{
+				}else{//fragment occur
 					if(best_prev){
 						set_slob(best_prev, slob_units(best_prev), best_cur + units);
 					}else{
@@ -661,63 +664,63 @@ void __init kmem_cache_init_late(void)
 }
 
 /*System call for this project
- *
- *
- *
+ *Reference: https://pastebin.com/Ny2xqPti
+ *These functions can return freespace and totalspace
+ *respectively
  */
 
 asmlinkage unsigned long sys_slob_free(void){
-	struct page *p;
+	struct page *sp;
 	struct list_head *slob_list;
-	unsigned long flag;
+	unsigned long flags;
 	unsigned long free_space = 0;
 
-	spin_lock_irqsave(&slob_lock, flag);
+	spin_lock_irqsave(&slob_lock, flags);
 
 	slob_list = &free_slob_small;
-	list_for_each_entry(p, slob_list, list){
-		free_space += p->units;
+	list_for_each_entry(sp, slob_list, lru){
+		free_space += sp->units;
 	}
 
 	slob_list = &free_slob_medium;
-	list_for_each_entry(p, slob_list, list){
-		free_space += p->units;
+	list_for_each_entry(sp, slob_list, lru){
+		free_space += sp->units;
 	}
 
 	slob_list = &free_slob_large;
-	list_for_each_entry(p, slob_list, list){
-		free_space += p->units;
+	list_for_each_entry(sp, slob_list, lru){
+		free_space += sp->units;
 	}
 
-	spin_unlock_irqrestore(&slob_lock, flag);
+	spin_unlock_irqrestore(&slob_lock, flags);
 
 	return free_space;
 }
 
 asmlinkage unsigned long sys_slob_claimed(void){
-	struct page *p;
+	struct page *sp;
 	struct list_head *slob_list;
-	unsigned long flag;
+	unsigned long flags;
 	long count = 0;
 
-	spin_lock_irqsave(&slob_lock, flag);
+	spin_lock_irqsave(&slob_lock, flags);
 
 	slob_list = &free_slob_small;
-	list_for_each_entry(p, slob_list, list){
+	list_for_each_entry(sp, slob_list, lru){
 		count++;
 	}
 
 	slob_list = &free_slob_medium;
-	list_for_each_entry(p, slob_list, list){
+	list_for_each_entry(sp, slob_list, lru){
 		count++;
 	}
 
 	slob_list = &free_slob_large;
-	list_for_each_entry(p, slob_list, list){
+	list_for_each_entry(sp, slob_list, lru){
 		count++;
 	}
 
-	spin_unlock_irqrestore(&slob_lock, flag);
+	spin_unlock_irqrestore(&slob_lock, flags);
 
 	return (count * SLOB_UNITS(PAGE_SIZE));
 }
