@@ -254,8 +254,29 @@ static void *slob_page_alloc(struct page *sp, size_t size, int align)
 					best_avail = slob_units(best_cur);
 				}
 
-				
+				best_next = slob_next(best_cur);
+				if(best_avail == units){
+					if(best_prev){
+						set_slob(best_prev, slob_units(best_prev), best_next);
+					}else{
+						sp->freelist = best_next;
+					}
+				}else{
+					if(best_prev){
+						set_slob(best_prev, slob_units(best_prev), best_cur + units);
+					}else{
+						sp->freelist = best_cur + units;
+					}
+					set_slob(best_cur + units, best_avail - units, best_next);
+				}
+
+				sp->units -= units;
+				if(!sp->units){
+					clear_slob_page_free(sp);
+				}
+				return best_cur;
 			}
+			return NULL;
 		}
 	}
 }
