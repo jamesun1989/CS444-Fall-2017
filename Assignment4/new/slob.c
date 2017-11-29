@@ -217,12 +217,15 @@ static void slob_free_pages(void *b, int order)
 static void *slob_page_alloc(struct page *sp, size_t size, int align)
 {
 	slob_t *prev, *cur, *aligned = NULL;
-	slob_t *best_prev, *best_cur, *best_alligned, *best_next = NULL;
+	slob_t *best_prev = NULL, *best_cur = NULL, *best_aligned = NULL, *best_next = NULL;
+	slobidx_t best_idx;
+	slobidx_t avail;
 
-	int delta = 0, units = SLOB_UNITS(size), best_delta = 0, best_units = SLOB_UNITS(size);
+	int delta = 0, units = SLOB_UNITS(size), best_delta = 0;
 
 	for (prev = NULL, cur = sp->freelist; ; prev = cur, cur = slob_next(cur)) {
 		slobidx_t avail = slob_units(cur);
+		best_idx = 0;
 
 
 		if (align) {
@@ -230,19 +233,29 @@ static void *slob_page_alloc(struct page *sp, size_t size, int align)
 			delta = aligned - cur;
 		}
 
-		if (avail >= (units + delta)){ // room enough?
-			if(best_cur == NULL || avail - (units + delta) < best_units){
-				best_prev = prev;
-				best_cur = cur;
-				best_alligned = aligned;
-				best_delta = delta;
-				best_units = avail - (units + delta);
-			}
+		if((avail >= (units + delta)) && (best_cur == NULL || (avail - (units + delta) < best_idx))){
+			best_prev = prev;
+			best_cur = cur;
+			best_aligned = aligned;
+			best_delta = delta;
+			best_idx = avail - (units + delta);
 		}
 
-		
+		if(slob_last(cur)){
+			if(best_cur != NULL){
+				slobidx_t best_avail = slob_units(best_cur);
+
+				if(best_delta){
+					best_next = slob_next(best_cur);
+					set_slob(best_aligned, best_avail - best_delta, best_next);
+					set_slob(best_cur, best_delta, best_aligned);
+					best_prev = best_cur;
+					best_cur = best_aligned;
+					best_avail = slob_units(best_cur);
+				}
+
+				
 			}
-			return NULL;
 		}
 	}
 }
