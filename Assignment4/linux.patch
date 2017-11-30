@@ -1,0 +1,195 @@
+diff --git a/new/slob.c b/old/slob.c
+index 8ab5c95..96a8620 100644
+--- a/new/slob.c
++++ b/old/slob.c
+@@ -217,70 +217,48 @@ static void slob_free_pages(void *b, int order)
+ static void *slob_page_alloc(struct page *sp, size_t size, int align)
+ {
+ 	slob_t *prev, *cur, *aligned = NULL;
+-	slob_t *best_prev = NULL, *best_cur = NULL, *best_aligned = NULL, *best_next = NULL;
+-	slobidx_t best_idx;
+-	slobidx_t avail;
++	int delta = 0, units = SLOB_UNITS(size);
+ 
+-	int delta = 0, units = SLOB_UNITS(size), best_delta = 0;
+-
+-	//start allocation
+ 	for (prev = NULL, cur = sp->freelist; ; prev = cur, cur = slob_next(cur)) {
+ 		slobidx_t avail = slob_units(cur);
+-		best_idx = 0;
+-
+ 
+ 		if (align) {
+ 			aligned = (slob_t *)ALIGN((unsigned long)cur, align);
+ 			delta = aligned - cur;
+ 		}
++		if (avail >= units + delta) { /* room enough? */
++			slob_t *next;
++
++			if (delta) { /* need to fragment head to align? */
++				next = slob_next(cur);
++				set_slob(aligned, avail - delta, next);
++				set_slob(cur, delta, aligned);
++				prev = cur;
++				cur = aligned;
++				avail = slob_units(cur);
++			}
+ 
+-		//if space is big enough and the size is best or not
+-		if((avail >= (units + delta)) && (best_cur == NULL || (avail - (units + delta) < best_idx))){
+-			best_prev = prev;
+-			best_cur = cur;
+-			best_aligned = aligned;
+-			best_delta = delta;
+-			best_idx = avail - (units + delta);
+-		}
+-
+-		//allocate best fit
+-		if(slob_last(cur)){//check end of list
+-			if(best_cur != NULL){//if best_cur exists, continue
+-				slobidx_t best_avail = slob_units(best_cur);
+-
+-				if(best_delta){
+-					best_next = slob_next(best_cur);
+-					set_slob(best_aligned, best_avail - best_delta, best_next);
+-					set_slob(best_cur, best_delta, best_aligned);
+-					best_prev = best_cur;
+-					best_cur = best_aligned;
+-					best_avail = slob_units(best_cur);
+-				}
+-
+-				best_next = slob_next(best_cur);
+-				if(best_avail == units){//best fit 
+-					if(best_prev){
+-						set_slob(best_prev, slob_units(best_prev), best_next);
+-					}else{
+-						sp->freelist = best_next;
+-					}
+-				}else{//fragment occur
+-					if(best_prev){
+-						set_slob(best_prev, slob_units(best_prev), best_cur + units);
+-					}else{
+-						sp->freelist = best_cur + units;
+-					}
+-					set_slob(best_cur + units, best_avail - units, best_next);
+-				}
+-
+-				sp->units -= units;
+-				if(!sp->units){
+-					clear_slob_page_free(sp);
+-				}
+-				return best_cur;
++			next = slob_next(cur);
++			if (avail == units) { /* exact fit? unlink. */
++				if (prev)
++					set_slob(prev, slob_units(prev), next);
++				else
++					sp->freelist = next;
++			} else { /* fragment */
++				if (prev)
++					set_slob(prev, slob_units(prev), cur + units);
++				else
++					sp->freelist = cur + units;
++				set_slob(cur + units, avail - units, next);
+ 			}
+-			return NULL;
++
++			sp->units -= units;
++			if (!sp->units)
++				clear_slob_page_free(sp);
++			return cur;
+ 		}
++		if (slob_last(cur))
++			return NULL;
+ 	}
+ }
+ 
+@@ -662,65 +640,3 @@ void __init kmem_cache_init_late(void)
+ {
+ 	slab_state = FULL;
+ }
+-
+-/*System call for this project
+- *Reference: https://pastebin.com/Ny2xqPti
+- *These functions can return freespace and totalspace
+- *respectively
+- */
+-
+-asmlinkage unsigned long sys_slob_free(void){
+-	struct page *sp;
+-	struct list_head *slob_list;
+-	unsigned long flags;
+-	unsigned long free_space = 0;
+-
+-	spin_lock_irqsave(&slob_lock, flags);
+-
+-	slob_list = &free_slob_small;
+-	list_for_each_entry(sp, slob_list, lru){
+-		free_space += sp->units;
+-	}
+-
+-	slob_list = &free_slob_medium;
+-	list_for_each_entry(sp, slob_list, lru){
+-		free_space += sp->units;
+-	}
+-
+-	slob_list = &free_slob_large;
+-	list_for_each_entry(sp, slob_list, lru){
+-		free_space += sp->units;
+-	}
+-
+-	spin_unlock_irqrestore(&slob_lock, flags);
+-
+-	return free_space;
+-}
+-
+-asmlinkage unsigned long sys_slob_claimed(void){
+-	struct page *sp;
+-	struct list_head *slob_list;
+-	unsigned long flags;
+-	long count = 0;
+-
+-	spin_lock_irqsave(&slob_lock, flags);
+-
+-	slob_list = &free_slob_small;
+-	list_for_each_entry(sp, slob_list, lru){
+-		count++;
+-	}
+-
+-	slob_list = &free_slob_medium;
+-	list_for_each_entry(sp, slob_list, lru){
+-		count++;
+-	}
+-
+-	slob_list = &free_slob_large;
+-	list_for_each_entry(sp, slob_list, lru){
+-		count++;
+-	}
+-
+-	spin_unlock_irqrestore(&slob_lock, flags);
+-
+-	return (count * SLOB_UNITS(PAGE_SIZE));
+-}
+diff --git a/new/syscall_32.tbl b/old/syscall_32.tbl
+index bc3d9f9..b3560ec 100644
+--- a/new/syscall_32.tbl
++++ b/old/syscall_32.tbl
+@@ -365,5 +365,3 @@
+ 356	i386	memfd_create		sys_memfd_create
+ 357	i386	bpf			sys_bpf
+ 358	i386	execveat		sys_execveat			stub32_execveat
+-359 i386    slob_free       sys_slob_free
+-360 i386    slob_claimed    sys_slob_claimed
+diff --git a/new/syscalls.h b/old/syscalls.h
+index d498b03..85893d7 100644
+--- a/new/syscalls.h
++++ b/old/syscalls.h
+@@ -882,8 +882,4 @@ asmlinkage long sys_execveat(int dfd, const char __user *filename,
+ 			const char __user *const __user *argv,
+ 			const char __user *const __user *envp, int flags);
+ 
+-asmlinkage unsigned long sys_slob_claimed(void);
+-
+-asmlinkage unsigned long sys_slob_free(void);
+-
+ #endif
